@@ -15,11 +15,11 @@ DaxPay 开放支付平台 Go SDK，封装支付下单、关闭、退款、订单
 ## 安装（源码引入）
 
 ```bash
-go get github.com/daxpay/daxpay-open-sdk-go@main
+go get github.com/opendaxpay/dax-pay-sdk-go@main
 ```
 
 ```go
-import "github.com/daxpay/daxpay-open-sdk-go/daxpay"
+import "github.com/opendaxpay/dax-pay-sdk-go/daxpay"
 ```
 
 ## 快速开始
@@ -48,13 +48,13 @@ result, err := client.Pay(ctx, &daxpay.PayParam{
 // ok := client.VerifyNotice(rawBody)
 ```
 
-> 完整可运行示例见 `examples/`（实现中）。
+> 完整可运行示例见 [`examples/pay/main.go`](examples/pay/main.go)。
 
-## 契约文档
+## 接口文档
 
-- 接口契约：[`daxpay-open/_doc/design/sdk-contract.md`](../../dax-pay-open/_doc/design/sdk-contract.md)
-- 黄金测试向量：[`sdk-test-vectors.md`](../../dax-pay-open/_doc/design/sdk-test-vectors.md)
+- [接入准备](https://doc.open.daxpay.cn/api/getting-started) · [签名规则](https://doc.open.daxpay.cn/api/signature)
+- 黄金测试向量：见 [`daxpay/golden_test.go`](daxpay/golden_test.go)（与后端签名契约同源断言）
 
 ## License
 
-LGPL-3.0，与主仓库 [DaxPay Open](../../dax-pay-open) 同协议。
+LGPL-3.0，与主仓库 [DaxPay Open](https://gitee.com/dromara/dax-pay) 同协议。

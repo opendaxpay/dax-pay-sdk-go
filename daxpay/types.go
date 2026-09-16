@@ -11,7 +11,7 @@ type DaxResult[T any] struct {
 	Msg     string `json:"msg"`               // 提示信息（msg 非 message）
 	Data    T      `json:"data"`              // 业务数据
 	Sign    string `json:"sign,omitempty"`    // 平台 RSA 响应签名
-	ResTime string `json:"resTime,omitempty"` // 响应时间 UTC ISO
+	ResTime string `json:"resTime,omitempty"` // 响应时间（北京时间 yyyy-MM-dd HH:mm:ss）
 	ReqId   string `json:"reqId,omitempty"`   // 请求 ID 回显
 }
 

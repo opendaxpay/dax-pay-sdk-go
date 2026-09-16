@@ -7,7 +7,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/daxpay/daxpay-open-sdk-go/daxpay"
+	"github.com/opendaxpay/dax-pay-sdk-go/daxpay"
 )
 
 func main() {

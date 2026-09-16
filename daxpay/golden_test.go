@@ -89,20 +89,20 @@ var goldenVectors = []struct {
 			"FOyly9CN8071HjrHmxv002BqEA1BXZ9Sqdh5g==",
 	},
 	{
-		name: "V3-响应体验签",
+		name: "V3-响应体验签（北京时间 resTime）",
 		input: `{"code":0,"msg":"success","data":{"bizOrderNo":"PAY20250805143000001",` +
 			`"orderNo":"DEV_P20250805143000001","tradeNo":"T202508051430","status":"success",` +
 			`"amount":100,"payBody":"https://example.com/pay?token=abc123"},` +
-			`"reqId":"REQ20250805143000001","resTime":"2025-08-05T06:30:00Z"}`,
+			`"reqId":"REQ20250805143000001","resTime":"2025-08-05 14:30:00"}`,
 		expectedSignStr: "code=0&data.amount=100&data.bizOrderNo=PAY20250805143000001" +
 			"&data.orderNo=DEV_P20250805143000001&data.payBody=https://example.com/pay?token=abc123" +
 			"&data.status=success&data.tradeNo=T202508051430&msg=success" +
-			"&reqId=REQ20250805143000001&resTime=2025-08-05T06:30:00Z",
-		expectedSign: "CVeOt7IDNJnpzvqthuKuIK8sLYyECHGEhBwhT+9IwcY+WXXrx6naM2g2sQFawGmFz" +
-			"OsVdXyhG6zRlVt+6WGuDyrLkiDEiNXy8L11jcAnLiCLnV9qWdQBI2hXd4N8EaR81jlNxtZwlZm5tfXP+" +
-			"B4774RInYwVU7yUqgLFsWnCBi5smf33HDbDfW8rEciYjoSYhdUCNTwMApzC+v9/YpcB+Ol0Z83xw2jk6" +
-			"glnkREQJW0jnZ066y7yfUDiRnb+X9nt5n6zsCqgZHtwxahkCB38U2r8Ki3sREv0sLmvdONgnNYDYxd9Z" +
-			"UXzdWmAOY5D7A0TO5zjG6ppODrI0swuSOt3eQ==",
+			"&reqId=REQ20250805143000001&resTime=2025-08-05 14:30:00",
+		expectedSign: "juvn6a3t8AHlD6XJHUFdaMXPFb/BfMCCnfUC8/oledpfitYRvWmZBrjrQlwmuqybhaeeyk" +
+			"O3ds5AZT4fqE59duVjAeV9YxoVhsnJ+Sk/x6hAYnd70z+zWHP0AzKIip1EfGwx5/GsiOfz" +
+			"yuh3u0RlP1lBAdPMqdXf12I69mZjyNGWv2WplggV95PRX6bqlXVTPwfgTnJHSobKL4z0rN" +
+			"D0nTg/+qBqh8Px8aeNwLDh6mrpuLL6PKWVf9pmMzHhJzoj/CYJ2Ith8ciFdyVVB9vadAbk" +
+			"xg6JUjgaZ41S5+W2tQrrdw/oJ7GFcYHuDwmeKKVeZKu+nMrA5TtY5PQj+CrK3Q==",
 	},
 }
 
