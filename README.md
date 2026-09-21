@@ -2,7 +2,7 @@
 
 DaxPay 开放支付平台 Go SDK，封装支付/退款/转账/分账/查询/同步/网关共 15 个开放接口与回调验签。
 
-> **适配 DaxPay Open ≥ 1.0** · **Go 1.21+** · LGPL-3.0 · 零第三方依赖（标准库实现）
+> **适配 DaxPay Open ≥ 1.0** · **Go 1.21+** · Apache-2.0 · 零第三方依赖（标准库实现）
 
 ## 功能
 
@@ -111,4 +111,4 @@ go run ./cmd/demo --port=9791  # 显式指定端口
 
 ## License
 
-LGPL-3.0，与主仓库 [DaxPay Open](https://gitee.com/dromara/dax-pay) 同协议。
+Apache-2.0，可自由用于商业项目与闭源集成，协议全文见 [LICENSE](LICENSE)。主仓库 [DaxPay Open](https://gitee.com/dromara/dax-pay) 核心为 LGPL-3.0-or-later，本 SDK 作为独立仓按 Apache-2.0 单独发布。
