@@ -44,6 +44,19 @@ func parsePublicKey(pemStr string) (*rsa.PublicKey, error) {
 	return x509.ParsePKCS1PublicKey(block.Bytes)
 }
 
+// ValidatePrivateKeyPEM 校验商户私钥 PEM 是否可解析（PKCS#8 优先，回退 PKCS#1）
+// 联调页面保存配置时做即时校验用；解析失败返回带原因的 error
+func ValidatePrivateKeyPEM(pemStr string) error {
+	_, err := parsePrivateKey(pemStr)
+	return err
+}
+
+// ValidatePublicKeyPEM 校验平台公钥 PEM 是否可解析（X.509 优先，回退 PKCS#1）
+func ValidatePublicKeyPEM(pemStr string) error {
+	_, err := parsePublicKey(pemStr)
+	return err
+}
+
 // RsaSign 用商户私钥对 data 进行 SHA256withRSA 签名，返回 Base64
 // 对照后端 RsaSignUtil#sign（UTF-8 字节，PKCS1v15 确定性签名）
 func RsaSign(data string, privateKeyPem string) (string, error) {
