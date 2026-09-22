@@ -7,41 +7,48 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
-	"encoding/pem"
 	"errors"
 	"fmt"
 )
 
-// 加载私钥 PEM（PKCS#8 优先，回退 PKCS#1）— 对照后端 RsaSignUtil#loadPrivateKeyFromPem
+// 加载私钥（PKCS#8 优先，回退 PKCS#1）— 对照后端 RsaSignUtil#loadPrivateKeyFromPem
+// 文本先经 [pemToDER] 容错归一，兼容换行丢失 / 混入不可见字符的粘贴形态
 func parsePrivateKey(pemStr string) (*rsa.PrivateKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, errors.New("私钥 PEM 解析失败：无效的 PEM 格式")
+	der, err := pemToDER(pemStr)
+	if err != nil {
+		return nil, fmt.Errorf("私钥解析失败：%w", err)
 	}
-	if key, err := x509.ParsePKCS8PrivateKey(block.Bytes); err == nil {
+	if key, err := x509.ParsePKCS8PrivateKey(der); err == nil {
 		rsaKey, ok := key.(*rsa.PrivateKey)
 		if !ok {
 			return nil, errors.New("私钥非 RSA 类型")
 		}
 		return rsaKey, nil
 	}
-	return x509.ParsePKCS1PrivateKey(block.Bytes)
+	if rsaKey, err := x509.ParsePKCS1PrivateKey(der); err == nil {
+		return rsaKey, nil
+	}
+	return nil, errors.New("私钥解析失败：需为 PKCS#8（-----BEGIN PRIVATE KEY-----）或 PKCS#1（-----BEGIN RSA PRIVATE KEY-----）格式的 RSA 私钥")
 }
 
-// 加载公钥 PEM（X.509 优先，回退 PKCS#1）— 对照后端 RsaSignUtil#loadPublicKeyFromPem
+// 加载公钥（X.509 优先，回退 PKCS#1）— 对照后端 RsaSignUtil#loadPublicKeyFromPem
+// 文本先经 [pemToDER] 容错归一，兼容换行丢失 / 混入不可见字符的粘贴形态
 func parsePublicKey(pemStr string) (*rsa.PublicKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
-	if block == nil {
-		return nil, errors.New("公钥 PEM 解析失败：无效的 PEM 格式")
+	der, err := pemToDER(pemStr)
+	if err != nil {
+		return nil, fmt.Errorf("公钥解析失败：%w", err)
 	}
-	if key, err := x509.ParsePKIXPublicKey(block.Bytes); err == nil {
+	if key, err := x509.ParsePKIXPublicKey(der); err == nil {
 		rsaKey, ok := key.(*rsa.PublicKey)
 		if !ok {
 			return nil, errors.New("公钥非 RSA 类型")
 		}
 		return rsaKey, nil
 	}
-	return x509.ParsePKCS1PublicKey(block.Bytes)
+	if rsaKey, err := x509.ParsePKCS1PublicKey(der); err == nil {
+		return rsaKey, nil
+	}
+	return nil, errors.New("公钥解析失败：需为 X.509（-----BEGIN PUBLIC KEY-----）或 PKCS#1（-----BEGIN RSA PUBLIC KEY-----）格式的 RSA 公钥")
 }
 
 // ValidatePrivateKeyPEM 校验商户私钥 PEM 是否可解析（PKCS#8 优先，回退 PKCS#1）
