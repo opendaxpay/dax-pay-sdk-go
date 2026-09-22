@@ -44,7 +44,15 @@ func NewClient(config Config) *Client {
 // Execute 通用执行入口：自动填充公共参数 → JSON 签名 → POST → 验签 → 返回 RawResult
 // 走 JSON 签名路径（reqTime 已序列化为 GMT+8 字面量），与后端验签一致
 // param 可传入 struct（如 *PayParam）或 map，内部统一转 map 注入公共字段
+// 非 0 业务码返回 *BizError；需要「非 0 码不报错」的调用方（签名自检探针）走 throwOnBizErr=false 的变体
 func (c *Client) Execute(ctx context.Context, path string, param interface{}) (*RawResult, error) {
+	return c.execute(ctx, path, param, true)
+}
+
+// execute 完整执行形态：throwOnBizErr=false 时非 0 业务码不返回 error 而是原样返回 RawResult
+// （签名自检探针的职责是报告检查结果，失败码/失败消息本身就是有效答案）；
+// 响应验签失败仍返回 error（那是平台公钥配置问题，属于硬错误而非探针答案）
+func (c *Client) execute(ctx context.Context, path string, param interface{}, throwOnBizErr bool) (*RawResult, error) {
 	// 统一转 map（struct 或 map 均可；金额单位为分，float64 中间表示对分金额无精度损失）
 	paramBytes, err := json.Marshal(param)
 	if err != nil {
@@ -148,9 +156,10 @@ func (c *Client) Execute(ctx context.Context, path string, param interface{}) (*
 	} else if result.Code == 0 {
 		return nil, errors.New("响应缺少签名，无法验证来源")
 	}
-	if result.Code != 0 {
+	if result.Code != 0 && throwOnBizErr {
 		return nil, &BizError{Code: result.Code, Msg: result.Msg}
 	}
+	// 非 0 码且 throwOnBizErr=false：按原样返回，由探针类调用方按 Code 分类诊断
 	return &result, nil
 }
 
@@ -244,6 +253,32 @@ func (c *Client) GatewayPrePay(ctx context.Context, param *GatewayPrePayParam) (
 // GatewayQuery 网关订单查询 — POST /unipay/gateway/query
 func (c *Client) GatewayQuery(ctx context.Context, param *GatewayOrderQueryParam) (*GatewayOrderResult, error) {
 	return execData[GatewayOrderResult](c, ctx, "/unipay/gateway/query", param)
+}
+
+// SignedPing 签名自检探针 — POST /unipay/ping（走完整验签链路，一键判定商户号/应用/商户私钥/签名串是否可用）
+//
+// 与免签名的 [Client.Ping] 互补：本方法由持商户私钥方发起，非 0 业务码不返回 error 而是原样返回 DaxResult，
+// 供调用方按 Code 分类诊断（20052=验签失败且 Msg 含服务端待签串；10408-10411=nonce/时钟；
+// 其余=商户号/应用类错误）；响应验签失败仍返回 error（平台公钥配置问题）
+func (c *Client) SignedPing(ctx context.Context, param *PingParam) (*DaxResult[PingResult], error) {
+	raw, err := c.execute(ctx, "/unipay/ping", param, false)
+	if err != nil {
+		return nil, err
+	}
+	result := DaxResult[PingResult]{
+		Code:    raw.Code,
+		Msg:     raw.Msg,
+		Sign:    raw.Sign,
+		ResTime: raw.ResTime,
+		ReqId:   raw.ReqId,
+	}
+	// 非 0 码时 data 必为空，直接返回组装结果（探针诊断路径）
+	if len(raw.Data) > 0 && string(raw.Data) != "null" {
+		if err := json.Unmarshal(raw.Data, &result.Data); err != nil {
+			return nil, fmt.Errorf("响应 data 解析失败: %w", err)
+		}
+	}
+	return &result, nil
 }
 
 // Ping 回调链路自检探针 — GET /unipay/callback/ping（免签名免登录，返回固定标识文本）

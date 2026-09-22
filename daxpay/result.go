@@ -1,6 +1,6 @@
 package daxpay
 
-// 本文件登记全部 15 个开放接口的响应结果结构体 — 对照 sdk-contract.md 6.1–6.13
+// 本文件登记全部 15 个业务接口 + 签名自检探针的响应结果结构体 — 对照 sdk-contract.md 6.1–6.14
 // 均为只读结构（不参与请求签名），金额单位一律为「分」（int64）；
 // 时间字段为北京时间字面量 yyyy-MM-dd HH:mm:ss，按契约以 string 原样承载
 
@@ -179,4 +179,13 @@ type GatewayOrderResult struct {
 	FundStatus  string `json:"fundStatus"`  // 资金状态
 	Attach      string `json:"attach"`      // 商户扩展参数
 	ReturnUrl   string `json:"returnUrl"`   // 同步跳转地址
+}
+
+// PingResult 签名自检探针结果 — 对照契约 6.14
+// 回显平台侧解析结果，供对接方核对商户身份与签名串构造
+type PingResult struct {
+	MchNo          string `json:"mchNo"`          // 平台侧解析出的商户号
+	AppId          string `json:"appId"`          // 平台侧解析出的应用号
+	AppFromDefault bool   `json:"appFromDefault"` // 应用号是否回落平台默认应用（请求未携带 appId 时）
+	ServerSignStr  string `json:"serverSignStr"`  // 服务端待签串（与本地签名串比对可定位差异）
 }

@@ -228,6 +228,11 @@
           <div class="hint" id="cfgPubHint"></div>
         </div>
       </div>
+      <!-- 测试连接结果（两段式：连通探针 + 签名探针） -->
+      <div id="cfgTestBox" style="display:none;margin-top:10px">
+        <div class="sub" style="margin-bottom:6px">测试连接结果</div>
+        <div id="cfgTestOut" style="font-size:12px;line-height:1.7;color:#606266;word-break:break-all"></div>
+      </div>
     </div>
     <div class="modal-foot">
       <button class="btn-plain" id="cfgTest">测试连接</button>
@@ -472,6 +477,13 @@
         { key: 'appId', label: '应用号', hint: '留空由 SDK 注入连接配置中的应用号' },
         { key: 'mchNo', label: '商户号', hint: '留空由 SDK 注入连接配置中的商户号' }
       ]
+    },
+
+    {
+      key: 'signed-ping', group: '自检', name: '签名自检探针', action: '/demo/signed-ping',
+      paramClass: 'daxpay.PingParam', method: 'SignedPing', resultClass: 'daxpay.PingResult',
+      fields: [],
+      hint: '仅公共参数（由 SDK 注入）。走完整验签链路，一键判定商户号/应用/商户私钥/签名串是否可用；完整诊断用「连接配置 → 测试连接」'
     }
   ];
 
@@ -538,28 +550,96 @@
     if (e.key === 'Escape' && $('cfgModal').style.display !== 'none') { closeCfg(); }
   });
 
-  // 测试连接：服务端代调平台自检探针（浏览器直连平台地址会跨域，故走 /demo/ping 中转）
+  // 测试连接（两段式，均由服务端中转规避浏览器跨域）：
+  // ① /demo/ping 免签名连通探针 —— 回答「公网链路是否可达」
+  // ② /demo/signed-ping 签名自检探针 —— 走完整验签链路，判定当前配置的商户号/应用/商户私钥是否正确、能否发起真实调用
   $('cfgTest').onclick = function () {
     var serviceUrl = $('cfgServiceUrl').value.trim();
     if (!serviceUrl) { showCfgMsg('请先填写平台服务地址', true); return; }
     $('cfgTest').disabled = true;
     $('cfgTest').textContent = '测试中…';
-    // 先按当前表单值临时保存配置，再探针（未保存的地址也能测）
-    postConfig(function () {
-      fetch('/demo/ping', { method: 'POST' }).then(function (r) { return r.json(); }).then(function (res) {
-        if (res.success) {
-          showCfgMsg('连通正常（' + res.durationMs + ' ms）：' + res.marker, false);
-        } else {
-          showCfgMsg('连接失败：' + res.error, true);
-        }
+    $('cfgTestBox').style.display = 'none';
+    $('cfgTestOut').innerHTML = '';
+    // 先按当前表单值临时提交配置（仅服务端内存生效，不落 localStorage），再探针（未保存的地址也能测）
+    postConfig(false, function (ok) {
+      if (!ok) {
+        // 配置未提交成功（必填校验未过或接口报错），复位按钮，不再发探针
+        $('cfgTest').disabled = false;
+        $('cfgTest').textContent = '测试连接';
+        return;
+      }
+      fetch('/demo/ping', { method: 'POST' }).then(function (r) { return r.json(); }).catch(function (e) {
+        return { success: false, error: '探针请求失败: ' + e.message };
+      }).then(function (res1) {
+        appendTestLine(1, res1.success, res1.success
+          ? '连通正常（' + res1.durationMs + ' ms）：' + res1.marker
+          : '连接失败：' + res1.error);
+        // 第二段独立执行：即使链路不通，签名层的诊断信息也有价值
+        return fetch('/demo/signed-ping', { method: 'POST' }).then(function (r) { return r.json(); });
       }).catch(function (e) {
-        showCfgMsg('探针请求失败: ' + e.message, true);
+        return { success: false, error: String((e && e.message) || e) };
+      }).then(function (res2) {
+        renderSignedPingResult(res2);
       }).finally(function () {
         $('cfgTest').disabled = false;
         $('cfgTest').textContent = '测试连接';
       });
     });
   };
+
+  /// 测试连接结果框：追加一行阶段结论（✔/✘ + 编号 + 文本）
+  function appendTestLine(stage, ok, text) {
+    $('cfgTestBox').style.display = '';
+    var div = document.createElement('div');
+    div.innerHTML = (ok ? '<span style="color:#67c23a">✔</span> ' : '<span style="color:#f56c6c">✘</span> ')
+      + '<b>' + stage + '</b> ' + esc(text);
+    $('cfgTestOut').appendChild(div);
+  }
+
+  /// 第二段（签名探针）结果渲染：结论 + 排查提示 + 可展开的报文明细（发出报文 vs 服务端待签串）
+  function renderSignedPingResult(res) {
+    if (!res || res.error) {
+      appendTestLine(2, false, (res && res.error) || '签名探针请求失败');
+      return;
+    }
+    if (res.hint && res.hint.indexOf('尚未配置') === 0) {
+      appendTestLine(2, false, res.hint);
+      return;
+    }
+    var ok = !!res.success;
+    if (ok) {
+      var d = res.data || {};
+      appendTestLine(2, true, '签名链路可用（' + res.durationMs + ' ms）：商户 ' + esc(d.mchNo || '-')
+        + ' / 应用 ' + esc(d.appId || '-') + (d.appFromDefault ? '（默认应用）' : '')
+        + '，商户私钥与平台配置匹配，可发起真实调用');
+      return;
+    }
+    appendTestLine(2, false, '[' + res.code + '] ' + esc(res.msg || ''));
+    if (res.hint) {
+      var h = document.createElement('div');
+      h.style.cssText = 'font-size:11px;color:#c0c4cc;margin:2px 0 4px 18px';
+      h.textContent = res.hint;
+      $('cfgTestOut').appendChild(h);
+    }
+    // 展开区：发出报文 + 平台原始响应（20052 时 msg 内含服务端待签串，与发出报文逐字段比对即可定位差异）
+    if (res.requestBody || res.responseBody) {
+      var det = document.createElement('details');
+      det.style.margin = '4px 0 0 18px';
+      var sum = document.createElement('summary');
+      sum.style.cssText = 'cursor:pointer;color:#a8abb2;font-size:11px';
+      sum.textContent = '报文明细（发出 / 响应）';
+      det.appendChild(sum);
+      ['requestBody', 'responseBody'].forEach(function (k) {
+        if (res[k]) {
+          var pre = document.createElement('pre');
+          pre.style.cssText = 'max-height:160px;overflow:auto;background:#f6f8fa;padding:6px;border-radius:4px;margin:4px 0;font-size:11px';
+          pre.textContent = res[k];
+          det.appendChild(pre);
+        }
+      });
+      $('cfgTestOut').appendChild(det);
+    }
+  }
 
   /// 提交当前弹窗表单到服务端（saveLocal 为 true 时同步落 localStorage）
   function postConfig(saveLocal, onDone) {

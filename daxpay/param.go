@@ -1,6 +1,6 @@
 package daxpay
 
-// 本文件登记全部 15 个开放接口的请求参数结构体 — 对照 sdk-contract.md 第二节 + 6.1–6.13
+// 本文件登记全部 15 个业务接口 + 签名自检探针的请求参数结构体 — 对照 sdk-contract.md 第二节 + 6.1–6.14
 // 金额单位一律为「分」（int64）；公共字段（mchNo/appId/reqId/reqTime/nonceStr）由 Client.Execute 自动注入
 
 // TerminalInfo 终端信息（线下 POS/收银台场景）— 对照契约 6.6
@@ -195,3 +195,7 @@ type GatewayOrderQueryParam struct {
 	AppId      string `json:"appId,omitempty"`      // 应用号
 	MchNo      string `json:"mchNo,omitempty"`      // 商户号
 }
+
+// PingParam 签名自检探针请求参数 — 对照契约 6.14
+// 仅公共参数（无业务字段），公共字段由 Client.Execute 注入
+type PingParam struct{}

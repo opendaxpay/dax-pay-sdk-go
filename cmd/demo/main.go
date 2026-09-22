@@ -8,6 +8,8 @@
 //     配置保存在**浏览器 localStorage**（服务端只存内存、不落盘）
 //   - POST /demo/ping           连通性自检：服务端代调 GET /unipay/callback/ping 探针
 //     （浏览器直连平台会跨域，故由本服务中转）
+//   - POST /demo/signed-ping    签名链路自检：服务端代调 POST /unipay/ping 签名探针（「测试连接」第二段，
+//     判定当前配置的商户号/应用/商户私钥是否正确、能否发起真实调用）
 //   - POST /demo/{action}       调 SDK 发起真实请求，回显「签名后请求体 + 平台原始响应 + 响应验签结果 + 耗时」，
 //     支持全部 15 个开放接口，action 取值见 actions 表
 //   - POST /callback/{pay|refund|alloc|transfer}（及通用 /callback）
@@ -53,7 +55,7 @@ var indexHTML []byte
 // actionFunc 单个 action 的执行体：把页面提交的 JSON 请求体绑到 param 结构体后调 SDK 方法
 type actionFunc func(client *daxpay.Client, body []byte) error
 
-// actions action → SDK 调用映射表（15 个开放接口），新增接口只需在此登记一行
+// actions action → SDK 调用映射表（15 个业务接口 + 签名自检探针），新增接口只需在此登记一行
 //
 // 用方法表达式 (*daxpay.Client).Xxx 取得「接收者作为首参」的函数值（SDK 方法均为指针接收者），
 // 由 bind / bindErr 泛型从方法签名自动推导 param 与 result 类型，无需在表里重复类型名
@@ -78,6 +80,22 @@ var actions = map[string]actionFunc{
 	// 网关族
 	"gateway-pre-pay": bind((*daxpay.Client).GatewayPrePay),
 	"gateway-query":   bind((*daxpay.Client).GatewayQuery),
+	// 自检族：探针非 0 码在此转成错误路径，与其它接口的失败回显行为一致（完整诊断走 /demo/signed-ping）
+	"signed-ping": func(client *daxpay.Client, body []byte) error {
+		param, err := decodeParam[daxpay.PingParam](body)
+		if err != nil {
+			return err
+		}
+		res, err := client.SignedPing(context.Background(), param)
+		if err != nil {
+			return err
+		}
+		// 非 0 业务码转成 BizError，错误文案与其它接口一致（[code] msg）
+		if res.Code != 0 {
+			return &daxpay.BizError{Code: res.Code, Msg: res.Msg}
+		}
+		return nil
+	},
 }
 
 // bind 把「JSON 体 → param 结构体 → SDK 方法」压成一行；P 为 param 类型，R 为结果类型
@@ -144,6 +162,21 @@ type pingResult struct {
 	DurationMs int64  `json:"durationMs"`
 }
 
+// signedPingResult 签名自检探针回显（字段名与 Java 版 DemoServer 一致：
+// success/code/msg/data/hint/error/requestBody/responseBody/durationMs）
+type signedPingResult struct {
+	ServiceURL   string      `json:"serviceUrl"`
+	Success      bool        `json:"success"`
+	Code         *int        `json:"code,omitempty"`         // 业务码（探针请求发出且拿到响应时才有）
+	Msg          string      `json:"msg,omitempty"`          // 平台消息（20052 时含服务端待签串）
+	Data         interface{} `json:"data,omitempty"`         // 探针成功时的 *daxpay.PingResult（失败码时无 data）
+	Hint         string      `json:"hint,omitempty"`         // 排查提示（按错误码分类诊断 / 硬错误提示）
+	Error        string      `json:"error,omitempty"`        // 硬错误消息（网络不通 / HTTP 非 200 / 响应验签失败）
+	RequestBody  *string     `json:"requestBody,omitempty"`  // SDK 实际发出的、含 sign 的完整请求 JSON
+	ResponseBody *string     `json:"responseBody,omitempty"` // 平台返回的原始响应体文本
+	DurationMs   int64       `json:"durationMs"`
+}
+
 // tradeResult 交易调试回显（业务失败也是 200 + success:false，页面据此渲染）
 type tradeResult struct {
 	Success      bool        `json:"success"`
@@ -195,8 +228,8 @@ func main() {
 
 // dispatch 单入口分发
 //
-// 路由匹配顺序（对齐 Java 版踩过的坑）：/demo/callbacks、/demo/callbacks/clear、/demo/ping
-// 必须排在 /demo/* 通配交易路由之前，否则会被当成 action 进交易处理、解析空 body 报错。
+// 路由匹配顺序（对齐 Java 版踩过的坑）：/demo/callbacks、/demo/callbacks/clear、/demo/ping、
+// /demo/signed-ping 必须排在 /demo/* 通配交易路由之前，否则会被当成 action 进交易处理、解析空 body 报错。
 func (s *server) dispatch(w http.ResponseWriter, r *http.Request) {
 	// panic 兜底：回 500 JSON，避免连接被直接断开（与其它语言 demo 行为一致）
 	defer func() {
@@ -221,6 +254,9 @@ func (s *server) dispatch(w http.ResponseWriter, r *http.Request) {
 	// 连通性自检（服务端代调平台探针）
 	case r.Method == http.MethodPost && path == "/demo/ping":
 		s.handlePing(w, r)
+	// 签名链路自检：服务端代调签名自检探针 POST /unipay/ping（「测试连接」第二段）
+	case r.Method == http.MethodPost && path == "/demo/signed-ping":
+		s.handleSignedPing(w, r)
 	// 交易调试（经 SDK 真实调用链）
 	case r.Method == http.MethodPost && strings.HasPrefix(path, "/demo/"):
 		s.handleTrade(w, r, strings.TrimPrefix(path, "/demo/"))
@@ -366,6 +402,80 @@ func (s *server) handlePing(w http.ResponseWriter, r *http.Request) {
 		result.Marker = marker
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+// ==================================================================
+// /demo/signed-ping 签名链路自检（服务端中转，规避浏览器跨域）
+// ==================================================================
+
+// handleSignedPing 代调签名自检探针 POST /unipay/ping，供页面「测试连接」第二段使用：
+// 判定当前配置的商户号/应用/商户私钥/签名串构造是否正确、能否发起真实调用
+func (s *server) handleSignedPing(w http.ResponseWriter, r *http.Request) {
+	cfg := s.snapshot()
+	result := signedPingResult{ServiceURL: cfg.ServiceUrl}
+	begin := time.Now()
+	if strings.TrimSpace(cfg.PrivateKey) == "" || strings.TrimSpace(cfg.PublicKey) == "" {
+		result.Success = false
+		// 探针走完整验签链路，两把钥匙缺一不可，各自给可操作文案
+		if strings.TrimSpace(cfg.PrivateKey) == "" {
+			result.Hint = "尚未配置商户私钥，请先在「连接配置」中填写"
+		} else {
+			result.Hint = "尚未配置平台公钥（响应无法验签），请先在「连接配置」中填写"
+		}
+		result.DurationMs = time.Since(begin).Milliseconds()
+		writeJSON(w, http.StatusOK, result)
+		return
+	}
+	// 回显钩子捕获发出报文与原始响应，供页面比对签名串（发出 JSON vs 服务端待签串）
+	var captured [2]string
+	client := daxpay.NewClient(cfg)
+	client.OnRequest = func(signedJSON string) { captured[0] = signedJSON }
+	client.OnResponse = func(rawBody string) { captured[1] = rawBody }
+
+	res, err := client.SignedPing(r.Context(), &daxpay.PingParam{})
+	if err != nil {
+		// 走到 err 只会是硬错误：网络不通 / HTTP 非 200 / 响应验签失败（平台公钥问题）
+		msg := err.Error()
+		result.Success = false
+		result.Error = msg
+		if strings.Contains(msg, "响应验签失败") {
+			result.Hint = "平台响应验签失败：请核对「连接配置」中的平台公钥"
+		} else if strings.Contains(msg, "HTTP 404") {
+			result.Hint = "网关未放行「商户开放 API」(/unipay) 接口组，需在部署面板开启"
+		}
+	} else {
+		code := res.Code
+		result.Success = code == 0
+		result.Code = &code
+		result.Msg = res.Msg
+		if code == 0 {
+			result.Data = &res.Data
+		} else {
+			result.Hint = classifyProbeError(code)
+		}
+	}
+	if captured[0] != "" {
+		result.RequestBody = &captured[0]
+	}
+	if captured[1] != "" {
+		result.ResponseBody = &captured[1]
+	}
+	result.DurationMs = time.Since(begin).Milliseconds()
+	writeJSON(w, http.StatusOK, result)
+}
+
+// classifyProbeError 探针错误码分类提示（对照契约 6.14 诊断表）
+func classifyProbeError(code int) string {
+	if code == 20052 {
+		return "验签失败：商户私钥与平台上配置的公钥不配对，或签名串构造不一致——比对「发出报文」与响应 msg 中的服务端待签串"
+	}
+	if code == 10408 || code == 10409 {
+		return "Nonce 防重放拦截：请勿复用请求（每次点击都会生成新 nonce）"
+	}
+	if code == 10410 || code == 10411 {
+		return "请求时间超窗：本机时钟偏差过大，或 reqTime 未按 GMT+8 yyyy-MM-dd HH:mm:ss 字面量"
+	}
+	return fmt.Sprintf("商户号/应用类错误（code %d）：核对 mchNo 与 appId 是否存在且启用", code)
 }
 
 // ==================================================================
