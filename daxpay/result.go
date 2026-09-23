@@ -6,11 +6,10 @@ package daxpay
 
 // PayResult 支付下单响应结果 — 对照契约 6.1 NormalPayResult
 type PayResult struct {
-	OrderId     int64  `json:"orderId"`     // 订单 ID
 	BizOrderNo  string `json:"bizOrderNo"`  // 商户订单号
 	OrderNo     string `json:"orderNo"`     // 平台业务单号
 	TradeNo     string `json:"tradeNo"`     // 资金交易号（与 orderNo 独立）
-	Status      string `json:"status"`      // wait/progress/success/close/cancel/fail/timeout
+	Status      string `json:"status"`      // 资金态: init/processing/success/fail/close/cancel
 	PayBody     string `json:"payBody"`     // 二维码链接/调起参数/跳转 URL
 	PayBodyType string `json:"payBodyType"` // code_url/pay_info/redirect_url
 }
@@ -27,6 +26,7 @@ type PayOrderResult struct {
 	Method            string `json:"method"`            // 支付方式
 	LimitPay          string `json:"limitPay"`          // 限制用户支付类型
 	Amount            int64  `json:"amount"`            // 金额，分
+	Currency          string `json:"currency"`          // 币种 ISO 4217（如 cny/usd，缺省 cny）
 	RealAmount        int64  `json:"realAmount"`        // 实收金额，分
 	RefundableBalance int64  `json:"refundableBalance"` // 可退款余额，分
 	Status            string `json:"status"`            // 支付状态
